@@ -10,6 +10,7 @@ from app.database.connection import get_db
 from app.database.models import User
 
 password_hash = PasswordHash.recommended()
+bearer_scheme = HTTPBearer()
 
 
 def hash_password(password: str) -> str:
@@ -26,3 +27,43 @@ def create_access_token(username: str) -> str:
     return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db=Depends(get_db),
+):
+    token = credentials.credentials
+
+    try:
+        payload = jwt.decode(
+        token,
+        SECRET_KEY, 
+        algorithms=[ALGORITHM]
+        )
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+        status_code=401,
+        detail="Token has expired"
+        )
+
+    except jwt.PyJWTError:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
+    username = payload.get("sub")
+    if username is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
+    user = db.query(User).filter(User.username == username).first()
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="User no longer exists"
+        )
+
+    return user
