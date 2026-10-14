@@ -576,27 +576,26 @@ def add_filter(
     filter_name: str,
     intensity: int = 1,
 ) -> dict:
-    """Apply a named image filter with optional intensity."""
 
     if not isinstance(filter_name, str) or not filter_name.strip():
         raise HTTPException(
             status_code=400,
-            detail="Filter name must be a non-empty string",
+            detail="Filter name must be a non empty string",
         )
 
     if (
         isinstance(intensity, bool)
         or not isinstance(intensity, int)
-        or intensity < 1
+        or not 1 <= intensity <= 10
     ):
         raise HTTPException(
             status_code=400,
-            detail="Intensity must be a positive integer",
+            detail="Intensity must be an integer between 1 and 10",
         )
 
     filter_key = filter_name.strip().upper()
 
-    supported_filters = {
+    basic_filters = {
         "BLUR": ImageFilter.BLUR,
         "CONTOUR": ImageFilter.CONTOUR,
         "DETAIL": ImageFilter.DETAIL,
@@ -606,14 +605,19 @@ def add_filter(
         "SHARPEN": ImageFilter.SHARPEN,
         "SMOOTH": ImageFilter.SMOOTH,
         "SMOOTH_MORE": ImageFilter.SMOOTH_MORE,
-        "GAUSSIAN_BLUR": ImageFilter.GaussianBlur,
-        "UNSHARP_MASK": ImageFilter.UnsharpMask,
-        "GRAYSCALE": "GRAYSCALE",
-        "SEPIA": "SEPIA",
+    }
+
+    supported_filters = {
+        *basic_filters.keys(),
+        "GAUSSIAN_BLUR",
+        "UNSHARP_MASK",
+        "GRAYSCALE",
+        "SEPIA",
     }
 
     if filter_key not in supported_filters:
-        valid = ", ".join(sorted(supported_filters.keys()))
+        valid = ", ".join(sorted(supported_filters))
+
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported filter. Supported filters: {valid}",
@@ -635,49 +639,79 @@ def add_filter(
             img = ImageOps.exif_transpose(img)
             img.load()
 
-            if filter_key in {"BLUR", "CONTOUR", "DETAIL", "EDGE_ENHANCE", "EDGE_ENHANCE_MORE", "EMBOSS", "SHARPEN", "SMOOTH", "SMOOTH_MORE"}:
+            has_transparency = (
+                "A" in img.getbands()
+                or "transparency" in img.info
+            )
+
+            img = img.convert(
+                "RGBA" if has_transparency else "RGB"
+            )
+
+            if filter_key in basic_filters:
                 filtered_image = img
-                for _ in range(min(intensity, 10)):
-                    filtered_image = filtered_image.filter(supported_filters[filter_key])
+
+                for _ in range(intensity):
+                    filtered_image = filtered_image.filter(
+                        basic_filters[filter_key]
+                    )
 
             elif filter_key == "GAUSSIAN_BLUR":
-                radius = max(0.5, min(10.0, float(intensity)))
                 filtered_image = img.filter(
-                    ImageFilter.GaussianBlur(radius=radius)
+                    ImageFilter.GaussianBlur(
+                        radius=float(intensity)
+                    )
                 )
 
             elif filter_key == "UNSHARP_MASK":
-                percent = max(100, min(500, intensity * 50))
                 filtered_image = img.filter(
-                    ImageFilter.UnsharpMask(percent=percent, radius=1)
+                    ImageFilter.UnsharpMask(
+                        radius=1,
+                        percent=intensity * 50,
+                    )
                 )
 
             elif filter_key == "GRAYSCALE":
-                filtered_image = ImageOps.grayscale(img)
+                grayscale = ImageOps.grayscale(img.convert("RGB"))
+
+                if has_transparency:
+                    alpha = img.getchannel("A")
+
+                    filtered_image = Image.merge(
+                        "RGBA",
+                        (grayscale, grayscale, grayscale, alpha),
+                    )
+                else:
+                    filtered_image = grayscale.convert("RGB")
 
             elif filter_key == "SEPIA":
-                grayscale = ImageOps.grayscale(img)
+                grayscale = ImageOps.grayscale(img.convert("RGB"))
+
                 filtered_image = ImageOps.colorize(
                     grayscale,
                     black="#704214",
                     white="#C0A080",
                 )
 
-            if filtered_image.mode not in ("RGB", "RGBA"):
-                has_transparency = (
-                    "A" in filtered_image.getbands()
-                    or "transparency" in filtered_image.info
-                )
-                filtered_image = filtered_image.convert(
-                    "RGBA" if has_transparency else "RGB"
-                )
+                if has_transparency:
+                    filtered_image.putalpha(img.getchannel("A"))
 
-            filtered_image.save(output_path, format="WEBP")
-
-    except (UnidentifiedImageError, OSError) as e:
+    except (UnidentifiedImageError, OSError, ValueError) as e:
         raise HTTPException(
             status_code=400,
             detail="Could not process the image",
+        ) from e
+
+    try:
+        filtered_image.save(
+            output_path,
+            format="WEBP",
+        )
+
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save the filtered image",
         ) from e
 
     return {
