@@ -1,4 +1,5 @@
 import uuid
+import math
 
 from fastapi import HTTPException
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -138,4 +139,55 @@ def crop_image(
         "width": cropped_image.width,
         "height": cropped_image.height,
         "format": "WEBP",
+    }
+
+def rotate_image(filename: str, degrees: int) -> dict:
+    if isinstance(degrees, bool) or not isinstance(degrees, int):
+        raise HTTPException(
+            status_code=400,
+            detail="Degrees must be an integer",
+        )
+
+    original_path = get_original_path(filename)
+
+    if not original_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Image not found",
+        )
+
+    output_filename = f"{uuid.uuid4().hex}.webp"
+    output_path = get_transformed_path(output_filename)
+
+    try:
+        with Image.open(original_path) as img:
+            img = ImageOps.exif_transpose(img)
+            img.load()
+
+            rotated_image = img.rotate(degrees, expand=True)
+
+            if (
+                rotated_image.width > 10000
+                or rotated_image.height > 10000
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Rotated image dimensions exceed 10000 pixels",
+                )
+
+            rotated_image.save(output_path, format="WEBP")
+
+    except (UnidentifiedImageError, OSError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not process the image",
+        ) from e
+
+    return {
+        "filename": output_filename,
+        "file_path": str(output_path),
+        "width": rotated_image.width,
+        "height": rotated_image.height,
+        "format": "WEBP",
+        "file_size": output_path.stat().st_size,
     }
