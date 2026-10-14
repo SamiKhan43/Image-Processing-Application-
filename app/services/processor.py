@@ -5,8 +5,12 @@ from fastapi import HTTPException
 from PIL import Image, ImageOps, UnidentifiedImageError, ImageDraw, ImageFont
 
 from app.services.storage import (
+    MAX_HEIGHT,
+    MAX_PIXELS,
+    MAX_WIDTH,
     get_original_path,
     get_transformed_path,
+    ALLOWED_TYPES
 )
 
 
@@ -22,10 +26,16 @@ def resize_image(
             detail="Width and height must be positive",
         )
 
-    if width > 10000 or height > 10000:
+    if width > MAX_WIDTH or height > MAX_HEIGHT:
         raise HTTPException(
             status_code=400,
             detail="Width and height cannot exceed 10000 pixels",
+        )
+
+    if width * height > MAX_PIXELS:
+        raise HTTPException(
+            status_code=400,
+            detail="Image cannot exceed 50000000 pixels",
         )
 
     original_path = get_original_path(filename)
@@ -461,5 +471,97 @@ def compress_image(
         "width": compressed_image.width,
         "height": compressed_image.height,
         "format": "WEBP",
+        "file_size": output_path.stat().st_size,
+    }
+
+def change_format(
+    filename: str,
+    target_format: str,
+) -> dict:
+
+    if not isinstance(target_format, str):
+        raise HTTPException(
+            status_code=400,
+            detail="Target format must be a string",
+        )
+
+    target_format = target_format.strip().upper()
+
+    if target_format == "JPG":
+        target_format = "JPEG"
+
+    if target_format not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Target format must be one of {list(ALLOWED_TYPES.keys())}",
+        )
+
+    original_path = get_original_path(filename)
+
+    if not original_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Image not found",
+        )
+
+    output_filename = f"{uuid.uuid4().hex}{ALLOWED_TYPES[target_format]}"
+    output_path = get_transformed_path(output_filename)
+
+    try:
+        with Image.open(original_path) as img:
+            img = ImageOps.exif_transpose(img)
+            img.load()
+
+            has_transparency = (
+                "A" in img.getbands()
+                or "transparency" in img.info
+            )
+
+            if target_format == "JPEG":
+                if has_transparency:
+                    rgba_image = img.convert("RGBA")
+
+                    converted_image = Image.new(
+                        "RGB",
+                        rgba_image.size,
+                        (255, 255, 255),
+                    )
+
+                    converted_image.paste(
+                        rgba_image,
+                        mask=rgba_image.getchannel("A"),
+                    )
+                else:
+                    converted_image = img.convert("RGB")
+
+            else:
+                converted_image = img.convert(
+                    "RGBA" if has_transparency else "RGB"
+                )
+
+    except (UnidentifiedImageError, OSError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not process the image",
+        ) from e
+
+    try:
+        converted_image.save(
+            output_path,
+            format=target_format,
+        )
+
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save the converted image",
+        ) from e
+
+    return {
+        "filename": output_filename,
+        "file_path": str(output_path),
+        "width": converted_image.width,
+        "height": converted_image.height,
+        "format": target_format,
         "file_size": output_path.stat().st_size,
     }
