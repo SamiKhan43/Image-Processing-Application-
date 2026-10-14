@@ -87,6 +87,58 @@ def verify_and_get_metadata(image_bytes: bytes) -> tuple[str, int, int]:
         Image.DecompressionBombWarning,
     ) as e:
         raise ValueError("Invalid or corrupted image file") from e
+        
+async def save_original_image(file: UploadFile) -> dict:
+    content = await read_with_limit(file)
+
+    if not content:
+        raise HTTPException(
+            status_code=400,
+            detail="Empty file",
+        )
+
+    try:
+        img_format, width, height = await run_in_threadpool(
+            verify_and_get_metadata,
+            content,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        ) from e
+
+    filename = f"{uuid.uuid4().hex}{ALLOWED_TYPES[img_format]}"
+    file_path = ORIGINAL_DIR / filename
+
+    try:
+        await run_in_threadpool(file_path.write_bytes, content)
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save image",
+        ) from e
+
+    return {
+        "filename": filename,
+        "file_path": str(file_path),
+        "format": img_format,
+        "width": width,
+        "height": height,
+        "size": len(content),
+    }
+
+
+def get_original_path(filename: str) -> Path:
+    return ORIGINAL_DIR / filename
+
+
+def get_transformed_path(filename: str) -> Path:
+    return TRANSFORMED_DIR / filename
+
+
+def delete_file(path: Path) -> None:
+    path.unlink(missing_ok=True)
 
 
 
