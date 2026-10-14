@@ -151,6 +151,7 @@ def crop_image(
         "format": "WEBP",
     }
 
+
 def rotate_image(filename: str, degrees: int) -> dict:
     if isinstance(degrees, bool) or not isinstance(degrees, int):
         raise HTTPException(
@@ -201,6 +202,7 @@ def rotate_image(filename: str, degrees: int) -> dict:
         "format": "WEBP",
         "file_size": output_path.stat().st_size,
     }
+
 
 def flip_image(
     filename: str,
@@ -406,6 +408,7 @@ def add_watermark(
         "file_size": output_path.stat().st_size,
     }
 
+
 def compress_image(
     filename: str,
     quality: int = 80,
@@ -473,6 +476,7 @@ def compress_image(
         "format": "WEBP",
         "file_size": output_path.stat().st_size,
     }
+
 
 def change_format(
     filename: str,
@@ -563,5 +567,124 @@ def change_format(
         "width": converted_image.width,
         "height": converted_image.height,
         "format": target_format,
+        "file_size": output_path.stat().st_size,
+    }
+
+
+def add_filter(
+    filename: str,
+    filter_name: str,
+    intensity: int = 1,
+) -> dict:
+    """Apply a named image filter with optional intensity."""
+
+    if not isinstance(filter_name, str) or not filter_name.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Filter name must be a non-empty string",
+        )
+
+    if (
+        isinstance(intensity, bool)
+        or not isinstance(intensity, int)
+        or intensity < 1
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Intensity must be a positive integer",
+        )
+
+    filter_key = filter_name.strip().upper()
+
+    supported_filters = {
+        "BLUR": ImageFilter.BLUR,
+        "CONTOUR": ImageFilter.CONTOUR,
+        "DETAIL": ImageFilter.DETAIL,
+        "EDGE_ENHANCE": ImageFilter.EDGE_ENHANCE,
+        "EDGE_ENHANCE_MORE": ImageFilter.EDGE_ENHANCE_MORE,
+        "EMBOSS": ImageFilter.EMBOSS,
+        "SHARPEN": ImageFilter.SHARPEN,
+        "SMOOTH": ImageFilter.SMOOTH,
+        "SMOOTH_MORE": ImageFilter.SMOOTH_MORE,
+        "GAUSSIAN_BLUR": ImageFilter.GaussianBlur,
+        "UNSHARP_MASK": ImageFilter.UnsharpMask,
+        "GRAYSCALE": "GRAYSCALE",
+        "SEPIA": "SEPIA",
+    }
+
+    if filter_key not in supported_filters:
+        valid = ", ".join(sorted(supported_filters.keys()))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported filter. Supported filters: {valid}",
+        )
+
+    original_path = get_original_path(filename)
+
+    if not original_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Image not found",
+        )
+
+    output_filename = f"{uuid.uuid4().hex}.webp"
+    output_path = get_transformed_path(output_filename)
+
+    try:
+        with Image.open(original_path) as img:
+            img = ImageOps.exif_transpose(img)
+            img.load()
+
+            if filter_key in {"BLUR", "CONTOUR", "DETAIL", "EDGE_ENHANCE", "EDGE_ENHANCE_MORE", "EMBOSS", "SHARPEN", "SMOOTH", "SMOOTH_MORE"}:
+                filtered_image = img
+                for _ in range(min(intensity, 10)):
+                    filtered_image = filtered_image.filter(supported_filters[filter_key])
+
+            elif filter_key == "GAUSSIAN_BLUR":
+                radius = max(0.5, min(10.0, float(intensity)))
+                filtered_image = img.filter(
+                    ImageFilter.GaussianBlur(radius=radius)
+                )
+
+            elif filter_key == "UNSHARP_MASK":
+                percent = max(100, min(500, intensity * 50))
+                filtered_image = img.filter(
+                    ImageFilter.UnsharpMask(percent=percent, radius=1)
+                )
+
+            elif filter_key == "GRAYSCALE":
+                filtered_image = ImageOps.grayscale(img)
+
+            elif filter_key == "SEPIA":
+                grayscale = ImageOps.grayscale(img)
+                filtered_image = ImageOps.colorize(
+                    grayscale,
+                    black="#704214",
+                    white="#C0A080",
+                )
+
+            if filtered_image.mode not in ("RGB", "RGBA"):
+                has_transparency = (
+                    "A" in filtered_image.getbands()
+                    or "transparency" in filtered_image.info
+                )
+                filtered_image = filtered_image.convert(
+                    "RGBA" if has_transparency else "RGB"
+                )
+
+            filtered_image.save(output_path, format="WEBP")
+
+    except (UnidentifiedImageError, OSError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not process the image",
+        ) from e
+
+    return {
+        "filename": output_filename,
+        "file_path": str(output_path),
+        "width": filtered_image.width,
+        "height": filtered_image.height,
+        "format": "WEBP",
         "file_size": output_path.stat().st_size,
     }
