@@ -395,3 +395,71 @@ def add_watermark(
         "format": "WEBP",
         "file_size": output_path.stat().st_size,
     }
+
+def compress_image(
+    filename: str,
+    quality: int = 80,
+) -> dict:
+
+    if (
+        isinstance(quality, bool)
+        or not isinstance(quality, int)
+        or not 0 <= quality <= 100
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Quality must be an integer between 0 and 100",
+        )
+
+    original_path = get_original_path(filename)
+
+    if not original_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Image not found",
+        )
+
+    output_filename = f"{uuid.uuid4().hex}.webp"
+    output_path = get_transformed_path(output_filename)
+
+    try:
+        with Image.open(original_path) as img:
+            img = ImageOps.exif_transpose(img)
+            img.load()
+
+            has_transparency = (
+                "A" in img.getbands()
+                or "transparency" in img.info
+            )
+
+            compressed_image = img.convert(
+                "RGBA" if has_transparency else "RGB"
+            )
+
+    except (UnidentifiedImageError, OSError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not process the image",
+        ) from e
+
+    try:
+        compressed_image.save(
+            output_path,
+            format="WEBP",
+            quality=quality,
+        )
+
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save the compressed image",
+        ) from e
+
+    return {
+        "filename": output_filename,
+        "file_path": str(output_path),
+        "width": compressed_image.width,
+        "height": compressed_image.height,
+        "format": "WEBP",
+        "file_size": output_path.stat().st_size,
+    }
