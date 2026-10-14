@@ -2,7 +2,7 @@ import uuid
 import math
 
 from fastapi import HTTPException
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError, ImageDraw, ImageFont
 
 from app.services.storage import (
     get_original_path,
@@ -261,6 +261,137 @@ def flip_image(
         "file_path": str(output_path),
         "width": flipped_image.width,
         "height": flipped_image.height,
+        "format": "WEBP",
+        "file_size": output_path.stat().st_size,
+    }
+
+
+def add_watermark(
+    filename: str,
+    watermark_text: str,
+    x: int,
+    y: int,
+    font_size: int = 32,
+    opacity: int = 128,
+) -> dict:
+
+    if not isinstance(watermark_text, str) or not watermark_text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Watermark text cannot be empty",
+        )
+
+    if (
+        isinstance(opacity, bool)
+        or not isinstance(opacity, int)
+        or not 0 <= opacity <= 255
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Opacity must be an integer between 0 and 255",
+        )
+
+    if (
+        isinstance(x, bool)
+        or isinstance(y, bool)
+        or not isinstance(x, int)
+        or not isinstance(y, int)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Coordinates must be integers",
+        )
+
+    if x < 0 or y < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Coordinates cannot be negative",
+        )
+
+    if (
+        isinstance(font_size, bool)
+        or not isinstance(font_size, int)
+        or not 1 <= font_size <= 500
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Font size must be an integer between 1 and 500",
+        )
+
+    original_path = get_original_path(filename)
+
+    if not original_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Image not found",
+        )
+
+    output_filename = f"{uuid.uuid4().hex}.webp"
+    output_path = get_transformed_path(output_filename)
+
+    try:
+        with Image.open(original_path) as img:
+            img = ImageOps.exif_transpose(img)
+            img.load()
+
+            if x >= img.width or y >= img.height:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Watermark coordinates exceed image dimensions",
+                )
+
+            watermark_layer = Image.new(
+                "RGBA",
+                img.size,
+                (0, 0, 0, 0),
+            )
+
+            draw = ImageDraw.Draw(watermark_layer)
+            font = ImageFont.load_default(size=font_size)
+
+            text_bounds = draw.textbbox(
+                (x, y),
+                watermark_text,
+                font=font,
+            )
+
+            if text_bounds[2] > img.width or text_bounds[3] > img.height:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Watermark text extends beyond image dimensions",
+                )
+
+            draw.text(
+                (x, y),
+                watermark_text,
+                font=font,
+                fill=(255, 255, 255, opacity),
+            )
+
+            watermarked_image = Image.alpha_composite(
+                img.convert("RGBA"),
+                watermark_layer,
+            )
+
+    except (UnidentifiedImageError, OSError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not process the image",
+        ) from e
+
+    try:
+        watermarked_image.save(output_path, format="WEBP")
+    except OSError as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save the watermarked image",
+        ) from e
+
+    return {
+        "filename": output_filename,
+        "file_path": str(output_path),
+        "width": watermarked_image.width,
+        "height": watermarked_image.height,
         "format": "WEBP",
         "file_size": output_path.stat().st_size,
     }
