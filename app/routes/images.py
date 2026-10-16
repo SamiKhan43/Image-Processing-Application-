@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from app.database.connection import get_db
@@ -19,7 +19,14 @@ from app.services.processor import (
 )
 
 from app.schemas.images import (
-    ResizeImageRequest
+    ResizeImageRequest,
+    CropImageRequest,
+    RotateImageRequest,
+    FlipImageRequest,
+    WatermarkRequest,
+    CompressImageRequest,
+    ChangeFormatRequest,  
+    FilterImageRequest,   
 )
 
 router = APIRouter(
@@ -27,54 +34,57 @@ router = APIRouter(
     tags=["Images"],
 )
 
+
 @router.post("/upload", status_code=201)
 async def upload_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    image_data = await save_original_image(file)
-
-    image_record = ImageMetaData(
+    result = await save_original_image(file)
+ 
+    new_record = ImageMetaData(
         user_id=current_user.id,
-        original_filename=image_data["filename"],
-        file_path=image_data["file_path"],
-        format=image_data["format"],
-        width=image_data["width"],
-        height=image_data["height"],
+        original_filename=result["filename"],
+        file_path=result["file_path"],
+        format=result["format"],
+        width=result["width"],
+        height=result["height"],
     )
-
-    try :
-        db.add(resized_record)
+ 
+    try:
+        db.add(new_record)
         db.commit()
-        db.refresh(resized_record)
-    except SQLAlchemyError :
+        db.refresh(new_record)
+    except SQLAlchemyError as e:
+        db.rollback()
         try:
             delete_file(Path(result["file_path"]))
         except Exception:
             pass
-
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not save resized image metadata",
+            detail="Could not save uploaded image metadata",
         ) from e
-
+ 
     return {
         "message": "Image uploaded successfully",
-        "image_id": image_record.id,
-        "original_filename": image_record.original_filename,
-        "format": image_record.format,
-        "width": image_record.width,
-        "height": image_record.height,
-        "file_size": image_data["size"],
-        "created_at": image_record.created_at,
+        "image_id": new_record.id,
+        "filename": new_record.original_filename,
+        "format": new_record.format,
+        "width": new_record.width,
+        "height": new_record.height,
+        "file_size": result["size"],
+        "created_at": new_record.created_at,
     }
+
+
 
 @router.post("/{image_id}/resize", status_code=201)
 def resize_existing_image(
-    image_id : int ,
-    request : ResizeImageRequest,
-    db : Session = Depends(get_db),
+    image_id: int,
+    request: ResizeImageRequest,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     original_record = db.query(ImageMetaData).filter(
@@ -82,19 +92,19 @@ def resize_existing_image(
         ImageMetaData.user_id == current_user.id,
     ).first()
 
-    if original_record is None :
+    if original_record is None:
         raise HTTPException(
             status_code=404,
-            detail= "image not found",
-        )
+            detail="Image not found",
+    )
 
-    resized_image = resize_image(
+    result = resize_image(
         filename=original_record.original_filename,
         width=request.width,
         height=request.height,
     )
 
-    resized_record = ImageMetaData(
+    new_record = ImageMetaData(
         user_id=current_user.id,
         original_filename=result["filename"],
         file_path=result["file_path"],
@@ -103,16 +113,16 @@ def resize_existing_image(
         height=result["height"],
     )
 
-    try :
-        db.add(resized_record)
+    try:
+        db.add(new_record)
         db.commit()
-        db.refresh(resized_record)
-    except SQLAlchemyError :
+        db.refresh(new_record)
+    except SQLAlchemyError as e:
+        db.rollback()
         try:
             delete_file(Path(result["file_path"]))
         except Exception:
             pass
-
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not save resized image metadata",
@@ -120,11 +130,12 @@ def resize_existing_image(
 
     return {
         "message": "Image resized successfully",
-        "image_id": resized_record.id,
+        "image_id": new_record.id,
         "source_image_id": original_record.id,
-        "filename": resized_record.original_filename,
-        "format": resized_record.format,
-        "width": resized_record.width,
-        "height": resized_record.height,
+        "filename": new_record.original_filename,
+        "format": new_record.format,
+        "width": new_record.width,
+        "height": new_record.height,
         "file_size": result["file_size"],
+        "created_at": new_record.created_at,
     }
