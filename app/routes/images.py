@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from app.database.connection import get_db
@@ -33,6 +34,41 @@ router = APIRouter(
     prefix="/images",
     tags=["Images"],
 )
+
+
+@router.get("/{image_id}/file", response_class=FileResponse)
+def get_image_file(
+    image_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    image = db.query(ImageMetaData).filter(
+        ImageMetaData.id == image_id,
+        ImageMetaData.user_id == current_user.id,
+    ).first()
+
+    if image is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    file_path = Path(image.file_path)
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Image file not found")
+
+    media_types = {
+        "JPEG": "image/jpeg",
+        "PNG": "image/png",
+        "WEBP": "image/webp",
+    }
+    media_type = media_types.get(image.format.upper())
+    if media_type is None:
+        raise HTTPException(status_code=500, detail="Unsupported image format")
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        filename=image.original_filename,
+        content_disposition_type="inline",
+    )
 
 
 @router.post("/upload", status_code=201)
