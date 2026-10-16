@@ -66,6 +66,7 @@ def resize_image(
 
     return {
         "filename": output_filename,
+        "file_path": str(output_path),
         "width": width,
         "height": height,
         "format": "WEBP",
