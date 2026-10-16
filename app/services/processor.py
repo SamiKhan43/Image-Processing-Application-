@@ -727,4 +727,3 @@ def add_filter(
         "format": "WEBP",
         "file_size": output_path.stat().st_size,
     }
-],

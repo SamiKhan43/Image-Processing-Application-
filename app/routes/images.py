@@ -18,7 +18,7 @@ from app.services.processor import (
     add_filter,
 )
 
-from app.schemas.images import (
+from schemas.images import (
     ResizeImageRequest,
     CropImageRequest,
     RotateImageRequest,
