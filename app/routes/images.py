@@ -217,7 +217,7 @@ def rotate_existing_image(
 
     result = rotate_image(
         filename=original_record.original_filename,
-        degree=request.degrees,  # check this matches your processor's parameter name
+        degrees=request.degrees,  # match processor parameter name
     )
 
     new_record = ImageMetaData(
@@ -329,13 +329,13 @@ def add_watermark_to_existing_image(
     if original_record is None:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    result = add_watermark (
-        filename = original_record.original_filename,
-        watermark_text = request.watermark_text,
-        x_cordinate= request.x,
-        y_cordinate = request.x,
-        font_size = request.font_size,
-        opacity = request.opacity
+    result = add_watermark(
+        filename=original_record.original_filename,
+        watermark_text=request.watermark_text,
+        x=request.x,
+        y=request.y,
+        font_size=request.font_size,
+        opacity=request.opacity,
     )
 
     new_record = ImageMetaData(
@@ -433,7 +433,7 @@ def compress_existing_image(
 @router.post("/{image_id}/convert", status_code=201)
 def change_format_of_existing_image(
     image_id: int,
-    request: ConvertImageRequest,
+    request: ChangeFormatRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

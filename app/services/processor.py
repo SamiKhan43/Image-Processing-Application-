@@ -2,7 +2,7 @@ import uuid
 import math
 
 from fastapi import HTTPException
-from PIL import Image, ImageOps, UnidentifiedImageError, ImageDraw, ImageFont
+from PIL import Image, ImageOps, UnidentifiedImageError, ImageDraw, ImageFont, ImageFilter
 
 from app.services.storage import (
     MAX_HEIGHT,
@@ -150,6 +150,7 @@ def crop_image(
         "width": cropped_image.width,
         "height": cropped_image.height,
         "format": "WEBP",
+        "file_size": output_path.stat().st_size,
     }
 
 
@@ -360,7 +361,10 @@ def add_watermark(
             )
 
             draw = ImageDraw.Draw(watermark_layer)
-            font = ImageFont.load_default(size=font_size)
+            try:
+                font = ImageFont.truetype("DejaVuSans.ttf", font_size)
+            except OSError:
+                font = ImageFont.load_default()
 
             text_bounds = draw.textbbox(
                 (x, y),
@@ -723,3 +727,4 @@ def add_filter(
         "format": "WEBP",
         "file_size": output_path.stat().st_size,
     }
+],
