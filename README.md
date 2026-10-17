@@ -1,5 +1,7 @@
 # Pictura
 
+[README](./README.md) | [MIT License](./LICENSE) | [ROADMAP](./ROADMAP.md)
+
 > A secure, JWT-protected REST API for uploading images and transforming them: resize, crop, rotate, flip, watermark, compress, convert and filter.
 
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
@@ -26,7 +28,7 @@
 
 ## Overview
 
-Pictura is a small, focused image-processing backend built with FastAPI, SQLAlchemy and Pillow. Users sign up, log in to get a JWT, upload images, and apply transformations. Every transformation produces a **new image** and leaves the original untouched, so edits can be chained (resize, then crop, then apply a filter).
+Pictura is a small, focused image-processing backend built with FastAPI, SQLAlchemy and Pillow. Users sign up, log in to get a JWT, upload images, and apply transformations. Every transformation p[...]
 
 Interactive API docs are served at `/docs` while the server is running.
 
@@ -207,7 +209,7 @@ All `/images/*` endpoints require the header `Authorization: Bearer <token>`.
 
 ### Output formats
 
-Resize, crop, rotate, flip, watermark, compress and filter save their result as **WEBP**. Only `convert` lets you choose the output format. Converting a transparent image to JPEG places it on a white background.
+Resize, crop, rotate, flip, watermark, compress and filter save their result as **WEBP**. Only `convert` lets you choose the output format. Converting a transparent image to JPEG places it on a w[...]
 
 ### Status codes
 
