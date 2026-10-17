@@ -1,6 +1,6 @@
 # Pictura
 
-[README](./README.md) | [MIT License](./LICENSE) | [ROADMAP](./ROADMAP.md)
+[README](./README.md) | [MIT License](./LICENSE) | [Roadmap](./ROADMAP.md) | [Architecture](./Target_architecture.md)
 
 > A secure, JWT-protected REST API for uploading images and transforming them: resize, crop, rotate, flip, watermark, compress, convert and filter.
 
@@ -21,6 +21,8 @@
 - [Configuration](#configuration)
 - [Testing](#testing)
 - [Project structure](#project-structure)
+- [Architecture](#architecture)
+- [Roadmap](#roadmap)
 - [Security notes](#security-notes)
 - [Limitations](#limitations)
 - [Contributing](#contributing)
@@ -192,18 +194,18 @@ All `/images/*` endpoints require the header `Authorization: Bearer <token>`.
 
 | Endpoint | Field | Type | Rules |
 |---|---|---|---|
-| resize | `width`, `height` | int | 1 to 10,000; total at most 50,000,000 pixels |
-| crop | `left`, `top`, `right`, `bottom` | int | `left < right`, `top < bottom`, box must fit inside the image |
-| rotate | `degrees` | int | Any integer; result must stay within 10,000 px per side |
-| flip | `horizontal`, `vertical` | bool | At least one must be `true` |
-| watermark | `watermark_text` | string | 1 to 200 characters |
-| | `x`, `y` | int | Top-left position of the text; text must fit inside the image |
-| | `font_size` | int | 1 to 500 (default 32) |
-| | `opacity` | int | 0 to 255 (default 128) |
-| compress | `quality` | int | 0 to 100 (default 80) |
-| convert | `target_format` | string | `jpeg` (or `jpg`), `png`, `webp` |
-| filter | `filter_name` | string | See the filter list below |
-| | `intensity` | int | 1 to 10 (default 1) |
+| `resize` | `width`, `height` | int | 1–10,000; maximum 50,000,000 pixels total |
+| `crop` | `left`, `top`, `right`, `bottom` | int | Valid coordinates; crop box must fit inside the image |
+| `rotate` | `degrees` | int | Any integer; result must not exceed 10,000 px per side |
+| `flip` | `horizontal`, `vertical` | bool | At least one must be `true` |
+| `watermark` | `watermark_text` | string | 1–200 characters |
+| `watermark` | `x`, `y` | int | Text position; watermark must fit inside the image |
+| `watermark` | `font_size` | int | 1–500 (default: 32) |
+| `watermark` | `opacity` | int | 0–255 (default: 128) |
+| `compress` | `quality` | int | 0–100 (default: 80) |
+| `convert` | `target_format` | string | `jpeg` (or `jpg`), `png`, `webp` |
+| `filter` | `filter_name` | string | See the available filters below |
+| `filter` | `intensity` | int | 1–10 (default: 1) |
 
 **Available filters:** `blur`, `contour`, `detail`, `edge_enhance`, `edge_enhance_more`, `emboss`, `sharpen`, `smooth`, `smooth_more`, `gaussian_blur`, `unsharp_mask`, `grayscale`, `sepia`.
 
@@ -289,6 +291,32 @@ It covers authentication, every transformation (on RGB and RGBA images), all fil
 ```
 
 Created at runtime: the SQLite database file and `storage/original/` and `storage/transformed/`.
+
+## Architecture
+
+Pictura separates API routes, business logic, authentication, and data storage to keep the code organized and maintainable.
+
+- **Routes:** Handle authentication, image uploads, downloads, and transformations.
+- **Services:** Validate uploaded files, manage image storage, and process images.
+- **Security:** Handles password hashing, JWT generation, and authentication.
+- **Database:** Stores user accounts and image metadata using SQLAlchemy.
+- **Storage:** Keeps original and transformed images on disk.
+
+For the complete architecture, component responsibilities, and request flow, see the [Target Architecture](./Target_architecture.md).
+
+## Roadmap
+
+Pictura will evolve through improvements to reliability, security, storage, and deployment.
+
+Planned areas of development include:
+
+- **Database:** Add migration support and improve database scalability.
+- **Storage:** Explore object storage for handling images across multiple servers.
+- **Security:** Strengthen API protection and production readiness.
+- **Testing:** Expand automated tests and edge-case coverage.
+- **Deployment:** Improve deployment and operational workflows.
+
+See [ROADMAP.md](./ROADMAP.md) for the project's development plans and progress.
 
 ## Security notes
 
